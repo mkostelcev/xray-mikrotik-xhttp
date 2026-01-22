@@ -135,6 +135,10 @@ echo "Setting default route via ${TUN_NAME}..."
 ip route del default 2>/dev/null || true
 ip route add default via ${TUN_GW} dev ${TUN_NAME}
 
+# Enable IP forwarding for MikroTik traffic
+echo "Enabling IP forwarding..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
 echo "Routing table:"
 ip route
 
