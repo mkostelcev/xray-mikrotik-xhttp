@@ -14,9 +14,28 @@ Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2soc
 ## Требования
 
 - MikroTik с RouterOS 7.x (ARM, ARM64 или x86)
-- Внешний накопитель (USB/SD) для хранения контейнера
+- Минимум 256MB RAM (рекомендуется 512MB+)
+- Внешний накопитель (USB/SD) или tmpfs для контейнера
 - VPS с 3x-ui или standalone Xray
 - Домен для маскировки (например, www.github.com)
+
+### Совместимые модели MikroTik
+
+| Модель | RAM | CPU | Рекомендация |
+|--------|-----|-----|--------------|
+| **RB5009UG+S+IN** | 1 GB | ARM64 1.4GHz 4-core | Отлично |
+| **RB4011iGS+5HacQ2HnD** | 1 GB | ARM 1.4GHz 4-core | Отлично |
+| **RB4011iGS+RM** | 1 GB | ARM 1.4GHz 4-core | Отлично |
+| **CCR2004-16G-2S+** | 4 GB | ARM64 1.7GHz 4-core | Отлично |
+| **CCR2116-12G-4S+** | 16 GB | ARM64 2.0GHz 16-core | Отлично |
+| **hAP ax²** | 1 GB | ARM64 1.8GHz 4-core | Отлично |
+| **hAP ax³** | 1 GB | ARM64 1.8GHz 4-core | Отлично |
+| **RB3011UiAS-RM** | 1 GB | ARM 1.4GHz 2-core | Хорошо |
+| **hEX S (RB760iGS)** | 256 MB | ARM 880MHz 2-core | Минимум |
+| **hAP ac²** | 128 MB | ARM 716MHz 4-core | Не рекомендуется |
+| **hAP ac lite** | 64 MB | - | Не поддерживается |
+
+> **Примечание:** Для комфортной работы контейнера с xray+tun2socks рекомендуется минимум 512MB RAM. На устройствах с 256MB возможны проблемы при высокой нагрузке.
 
 ---
 
