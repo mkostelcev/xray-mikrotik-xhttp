@@ -139,21 +139,6 @@ echo "Routing table:"
 ip route
 
 echo ""
-echo "Starting xray..."
-/usr/local/bin/xray run -config "${CONFIG_FILE}" &
-XRAY_PID=$!
-
-# Wait for xray to start
-sleep 3
-
-# Check if xray is running
-if ! kill -0 ${XRAY_PID} 2>/dev/null; then
-    echo "ERROR: xray failed to start"
-    exit 1
-fi
-
-echo "xray started with PID ${XRAY_PID}"
-echo ""
 echo "Starting tun2socks..."
 /usr/local/bin/tun2socks \
     -device ${TUN_NAME} \
@@ -163,10 +148,10 @@ echo "Starting tun2socks..."
     -tcp-rcvbuf 3m \
     -loglevel silent &
 TUN2SOCKS_PID=$!
-
 echo "tun2socks started with PID ${TUN2SOCKS_PID}"
+
 echo ""
 echo "=== Container ready ==="
-
-# Wait for processes
-wait ${XRAY_PID} ${TUN2SOCKS_PID}
+echo ""
+echo "Starting xray (foreground)..."
+exec /usr/local/bin/xray run -config "${CONFIG_FILE}"
