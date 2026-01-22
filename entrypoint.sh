@@ -17,21 +17,27 @@ echo "SNI: ${SNI}"
 echo "==="
 
 # Resolve server address using DoH (DNS over HTTPS) to bypass DNS hijacking
+# Uses multiple DoH servers with fallback
+DOH_SERVERS="1.1.1.1 8.8.8.8 9.9.9.9"
+
 resolve_doh() {
     local domain=$1
-    local doh_server=${2:-1.1.1.1}
 
-    # Try DoH first
-    local result=$(curl -s --connect-timeout 5 "https://${doh_server}/dns-query?name=${domain}&type=A" \
-        -H "accept: application/dns-json" 2>/dev/null | \
-        jq -r '.Answer[] | select(.type==1) | .data' 2>/dev/null | head -1)
+    for doh_server in ${DOH_SERVERS}; do
+        echo "Trying DoH server ${doh_server}..." >&2
+        local result=$(curl -s --connect-timeout 5 "https://${doh_server}/dns-query?name=${domain}&type=A" \
+            -H "accept: application/dns-json" 2>/dev/null | \
+            jq -r '.Answer[] | select(.type==1) | .data' 2>/dev/null | head -1)
 
-    if [ -n "$result" ]; then
-        echo "$result"
-        return 0
-    fi
+        if [ -n "$result" ]; then
+            echo "Resolved via ${doh_server}" >&2
+            echo "$result"
+            return 0
+        fi
+    done
 
     # Fallback to traditional DNS
+    echo "DoH failed, trying traditional DNS..." >&2
     dig +short "$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1
 }
 
@@ -139,9 +145,12 @@ ip link set ${TUN_NAME} up
 echo "Adding route to ${SERVER_IP} via ${GATEWAY}..."
 ip route add ${SERVER_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
 
-# Route DoH server bypassing tunnel (for DNS resolution via HTTPS)
-echo "Adding route to DoH server 1.1.1.1 via ${GATEWAY}..."
-ip route add 1.1.1.1/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
+# Route DoH servers bypassing tunnel (for DNS resolution via HTTPS)
+echo "Adding routes to DoH servers via ${GATEWAY}..."
+for DOH_IP in ${DOH_SERVERS}; do
+    echo "  Adding DoH ${DOH_IP} to tunnel bypass"
+    ip route add ${DOH_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
+done
 
 # Change default route to tunnel
 echo "Setting default route via ${TUN_NAME}..."
