@@ -3,7 +3,7 @@ FROM alpine:3.21
 ARG TARGETARCH
 
 # Version pinning (set to "latest" to fetch dynamically)
-ARG XRAY_VERSION=v25.1.1
+ARG XRAY_VERSION=v26.1.18
 ARG TUN2SOCKS_VERSION=v2.6.0
 
 RUN apk add --no-cache \
