@@ -4,9 +4,9 @@ Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2soc
 
 ## Особенности
 
-- **xHTTP транспорт** — обходит DPI, который обрывает долгоживущие TCP соединения
+- **[Xray-core](https://github.com/XTLS/Xray-core)** с xHTTP транспортом — обходит DPI, который обрывает долгоживущие TCP соединения
 - **VLESS + Reality** — маскировка под легитимный TLS трафик (github.com и др.)
-- **tun2socks** — прозрачное проксирование TCP/UDP трафика
+- **[tun2socks](https://github.com/xjasonlyu/tun2socks)** — прозрачное проксирование TCP/UDP трафика
 - **DoH (DNS over HTTPS)** — резолв VPN сервера через зашифрованный DNS, обход DNS hijacking
 - **Multi-arch** — поддержка amd64, arm64, arm/v7 (MikroTik)
 - **IP forwarding** — маршрутизация трафика от MikroTik через контейнер
