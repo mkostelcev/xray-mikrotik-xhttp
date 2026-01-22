@@ -4,7 +4,7 @@ ARG TARGETARCH
 
 # Version pinning (set to "latest" to fetch dynamically)
 ARG XRAY_VERSION=v25.1.1
-ARG TUN2SOCKS_VERSION=v2.5.2
+ARG TUN2SOCKS_VERSION=v2.6.0
 
 RUN apk add --no-cache \
     bash \
@@ -46,8 +46,11 @@ RUN TUN2SOCKS_VERSION_RESOLVED="${TUN2SOCKS_VERSION}" && \
         *) ARCH="amd64" ;; \
     esac && \
     echo "Downloading tun2socks ${TUN2SOCKS_VERSION_RESOLVED} for ${ARCH}..." && \
-    curl -L -o /usr/local/bin/tun2socks "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION_RESOLVED}/tun2socks-linux-${ARCH}" && \
-    chmod +x /usr/local/bin/tun2socks
+    curl -L -o /tmp/tun2socks.zip "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION_RESOLVED}/tun2socks-linux-${ARCH}.zip" && \
+    unzip /tmp/tun2socks.zip -d /tmp/tun2socks && \
+    mv /tmp/tun2socks/tun2socks-linux-${ARCH} /usr/local/bin/tun2socks && \
+    chmod +x /usr/local/bin/tun2socks && \
+    rm -rf /tmp/tun2socks /tmp/tun2socks.zip
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
