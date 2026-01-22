@@ -41,12 +41,18 @@ resolve_doh() {
     dig +short "$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1
 }
 
-SERVER_IP="${SERVER_ADDRESS}"
-if ! echo "${SERVER_ADDRESS}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+# SERVER_IP env var overrides DNS resolution (use when DNS is blocked/hijacked)
+if [ -n "${SERVER_IP}" ]; then
+    echo "Using hardcoded SERVER_IP: ${SERVER_IP}"
+elif echo "${SERVER_ADDRESS}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    SERVER_IP="${SERVER_ADDRESS}"
+    echo "SERVER_ADDRESS is already IP: ${SERVER_IP}"
+else
     echo "Resolving ${SERVER_ADDRESS} via DoH..."
     SERVER_IP=$(resolve_doh "${SERVER_ADDRESS}")
     if [ -z "${SERVER_IP}" ]; then
         echo "ERROR: Failed to resolve ${SERVER_ADDRESS}"
+        echo "TIP: Set SERVER_IP env var to bypass DNS"
         exit 1
     fi
     echo "Resolved to: ${SERVER_IP}"
