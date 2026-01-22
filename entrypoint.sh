@@ -121,6 +121,15 @@ ip link set ${TUN_NAME} up
 echo "Adding route to ${SERVER_IP} via ${GATEWAY}..."
 ip route add ${SERVER_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
 
+# Route DNS servers from /etc/resolv.conf bypassing tunnel
+echo "Reading DNS servers from /etc/resolv.conf..."
+grep -E '^nameserver' /etc/resolv.conf | awk '{print $2}' | while read DNS_IP; do
+    if echo "${DNS_IP}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+        echo "Adding DNS ${DNS_IP} to tunnel bypass"
+        ip route add ${DNS_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
+    fi
+done
+
 # Change default route to tunnel
 echo "Setting default route via ${TUN_NAME}..."
 ip route del default 2>/dev/null || true
