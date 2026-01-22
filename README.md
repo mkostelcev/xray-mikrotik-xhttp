@@ -44,17 +44,44 @@ Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2soc
 /system/device-mode/print
 ```
 
-### 3. Настройка registry и хранилища
+### 3. Настройка RAM-хранилища (рекомендуется)
+
+Использование tmpfs снижает износ USB/SD и ускоряет работу контейнера.
 
 ```routeros
-# Настройка реестра (ghcr.io для GitHub packages)
-/container/config
-set registry-url=https://ghcr.io tmpdir=disk1/tmp
+# Создать tmpfs диск в RAM (64MB достаточно для контейнера)
+/disk
+add type=tmpfs tmpfs-max-size=64M slot=tmpfs1
 
-# Создание директории для контейнера
-/file print where name~"disk1"
-# Убедитесь, что disk1 существует (USB/SD накопитель)
+# Проверить
+/disk print
 ```
+
+### 4. Настройка registry и хранилища
+
+```routeros
+# Настройка реестра с tmpfs для временных файлов
+/container/config
+set registry-url=https://ghcr.io tmpdir=tmpfs1/tmp
+
+# Для хранения контейнера можно использовать:
+# - disk1 (USB/SD) - если нужна персистентность после перезагрузки
+# - tmpfs1 (RAM) - быстрее, но контейнер перекачивается после ребута
+```
+
+**Вариант A: USB/SD (персистентный)**
+```routeros
+# Контейнер сохраняется на диске
+/container add ... root-dir=disk1/xray
+```
+
+**Вариант B: RAM (быстрый, без износа)**
+```routeros
+# Контейнер в RAM, перекачивается при каждом старте
+/container add ... root-dir=tmpfs1/xray
+```
+
+> **Совет:** Для MikroTik с достаточным объёмом RAM (512MB+) рекомендуется tmpfs.
 
 ### 4. Настройка DNS для pull образа
 
@@ -108,11 +135,21 @@ add list=xray key=FP value=firefox
 
 #### 2.3. Создание контейнера
 
+**С хранением на USB/SD (персистентный):**
 ```routeros
 /container add remote-image=ghcr.io/mkostelcev/xray-mikrotik-xhttp:latest \
     interface=veth-xray envlist=xray root-dir=disk1/xray \
     start-on-boot=yes logging=yes
 ```
+
+**С хранением в RAM (рекомендуется для 512MB+ RAM):**
+```routeros
+/container add remote-image=ghcr.io/mkostelcev/xray-mikrotik-xhttp:latest \
+    interface=veth-xray envlist=xray root-dir=tmpfs1/xray \
+    start-on-boot=yes logging=yes
+```
+
+> При использовании tmpfs образ скачивается заново после каждой перезагрузки роутера.
 
 #### 2.4. NAT для трафика через контейнер
 
