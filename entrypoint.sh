@@ -16,11 +16,29 @@ echo "SERVER_PORT: ${SERVER_PORT:-443}"
 echo "SNI: ${SNI}"
 echo "==="
 
-# Resolve server address if it's a domain
+# Resolve server address using DoH (DNS over HTTPS) to bypass DNS hijacking
+resolve_doh() {
+    local domain=$1
+    local doh_server=${2:-1.1.1.1}
+
+    # Try DoH first
+    local result=$(curl -s --connect-timeout 5 "https://${doh_server}/dns-query?name=${domain}&type=A" \
+        -H "accept: application/dns-json" 2>/dev/null | \
+        jq -r '.Answer[] | select(.type==1) | .data' 2>/dev/null | head -1)
+
+    if [ -n "$result" ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Fallback to traditional DNS
+    dig +short "$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1
+}
+
 SERVER_IP="${SERVER_ADDRESS}"
 if ! echo "${SERVER_ADDRESS}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-    echo "Resolving ${SERVER_ADDRESS}..."
-    SERVER_IP=$(dig +short "${SERVER_ADDRESS}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+    echo "Resolving ${SERVER_ADDRESS} via DoH..."
+    SERVER_IP=$(resolve_doh "${SERVER_ADDRESS}")
     if [ -z "${SERVER_IP}" ]; then
         echo "ERROR: Failed to resolve ${SERVER_ADDRESS}"
         exit 1
@@ -121,14 +139,9 @@ ip link set ${TUN_NAME} up
 echo "Adding route to ${SERVER_IP} via ${GATEWAY}..."
 ip route add ${SERVER_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
 
-# Route DNS servers from /etc/resolv.conf bypassing tunnel
-echo "Reading DNS servers from /etc/resolv.conf..."
-grep -E '^nameserver' /etc/resolv.conf | awk '{print $2}' | while read DNS_IP; do
-    if echo "${DNS_IP}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-        echo "Adding DNS ${DNS_IP} to tunnel bypass"
-        ip route add ${DNS_IP}/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
-    fi
-done
+# Route DoH server bypassing tunnel (for DNS resolution via HTTPS)
+echo "Adding route to DoH server 1.1.1.1 via ${GATEWAY}..."
+ip route add 1.1.1.1/32 via ${GATEWAY} dev ${IFACE} 2>/dev/null || true
 
 # Change default route to tunnel
 echo "Setting default route via ${TUN_NAME}..."
