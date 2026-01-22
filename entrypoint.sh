@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# If first argument is sh/bash/shell - run shell instead
+if [ "$1" = "sh" ] || [ "$1" = "bash" ] || [ "$1" = "shell" ] || [ "$1" = "/bin/sh" ] || [ "$1" = "/bin/bash" ]; then
+    exec /bin/bash
+fi
+
 CONFIG_DIR="/opt/xray/config"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 mkdir -p "${CONFIG_DIR}"
