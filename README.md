@@ -13,9 +13,55 @@ Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2soc
 
 ## Требования
 
-- MikroTik с RouterOS 7.x и поддержкой контейнеров
+- MikroTik с RouterOS 7.x (ARM, ARM64 или x86)
+- Внешний накопитель (USB/SD) для хранения контейнера
 - VPS с 3x-ui или standalone Xray
 - Домен для маскировки (например, www.github.com)
+
+---
+
+## Подготовка MikroTik
+
+### 1. Установка пакета container
+
+Скачайте extra packages для вашей версии RouterOS с [mikrotik.com/download](https://mikrotik.com/download).
+
+```routeros
+# Проверка архитектуры
+/system resource print
+
+# После загрузки .npk файла на роутер
+/system reboot
+```
+
+### 2. Включение поддержки контейнеров
+
+```routeros
+# Включить container mode (требует перезагрузки)
+/system/device-mode/update container=yes
+
+# После перезагрузки проверить
+/system/device-mode/print
+```
+
+### 3. Настройка registry и хранилища
+
+```routeros
+# Настройка реестра (ghcr.io для GitHub packages)
+/container/config
+set registry-url=https://ghcr.io tmpdir=disk1/tmp
+
+# Создание директории для контейнера
+/file print where name~"disk1"
+# Убедитесь, что disk1 существует (USB/SD накопитель)
+```
+
+### 4. Настройка DNS для pull образа
+
+```routeros
+# Временно установить публичный DNS для скачивания образа
+/ip dns set servers=8.8.8.8,1.1.1.1
+```
 
 ---
 
@@ -72,6 +118,56 @@ add list=xray key=FP value=firefox
 
 ```routeros
 /ip firewall nat add action=masquerade chain=srcnat out-interface=veth-xray comment="xray-masq"
+```
+
+#### 2.5. Запуск контейнера
+
+```routeros
+# Проверить статус (должен быть "stopped" после pull)
+/container print
+
+# Запустить контейнер
+/container start [find tag~"xray"]
+
+# Проверить что контейнер running
+/container print
+```
+
+#### 2.6. Управление контейнером
+
+```routeros
+# Остановить
+/container stop [find tag~"xray"]
+
+# Перезапустить
+/container stop [find tag~"xray"]
+/container start [find tag~"xray"]
+
+# Логи контейнера
+/log print where topics~"container"
+
+# Shell внутрь контейнера (для отладки)
+/container shell [find tag~"xray"]
+
+# Удалить контейнер (для пересоздания)
+/container stop [find tag~"xray"]
+/container remove [find tag~"xray"]
+```
+
+#### 2.7. Обновление контейнера
+
+```routeros
+# Остановить и удалить старый
+/container stop [find tag~"xray"]
+/container remove [find tag~"xray"]
+
+# Скачать новый образ и создать контейнер
+/container add remote-image=ghcr.io/mkostelcev/xray-mikrotik-xhttp:latest \
+    interface=veth-xray envlist=xray root-dir=disk1/xray \
+    start-on-boot=yes logging=yes
+
+# Дождаться скачивания и запустить
+/container start [find tag~"xray"]
 ```
 
 ---
