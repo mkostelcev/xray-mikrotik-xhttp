@@ -1,26 +1,54 @@
 # xray-mikrotik-xhttp
 
-Docker container for MikroTik with Xray VLESS+Reality+xHTTP transport and tun2socks.
+Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2socks для прозрачного проксирования.
 
-## Features
+## Особенности
 
-- Xray with VLESS + Reality + **xHTTP** transport (bypasses DPI that kills long-lived TCP connections)
-- tun2socks for transparent proxying
-- Multi-architecture support: amd64, arm64, arm/v7 (MikroTik)
-- Configurable via environment variables
+- **xHTTP транспорт** — обходит DPI, который обрывает долгоживущие TCP соединения
+- **VLESS + Reality** — маскировка под легитимный TLS трафик (github.com и др.)
+- **tun2socks** — прозрачное проксирование TCP/UDP трафика
+- **DoH (DNS over HTTPS)** — резолв VPN сервера через зашифрованный DNS, обход DNS hijacking
+- **Multi-arch** — поддержка amd64, arm64, arm/v7 (MikroTik)
+- **IP forwarding** — маршрутизация трафика от MikroTik через контейнер
 
-## Usage on MikroTik
+## Требования
 
-### 1. Create veth interface
+- MikroTik с RouterOS 7.x и поддержкой контейнеров
+- VPS с 3x-ui или standalone Xray
+- Домен для маскировки (например, www.github.com)
 
-```
+---
+
+## Быстрый старт
+
+### 1. Настройка сервера (3x-ui)
+
+Создайте inbound в 3x-ui:
+
+| Параметр | Значение |
+|----------|----------|
+| Protocol | VLESS |
+| Port | 443 |
+| Security | Reality |
+| Transport | xHTTP |
+| Path | / |
+| Dest | www.github.com:443 |
+| SNI | www.github.com |
+
+Сохраните полученные данные: UUID, Public Key, Short ID.
+
+### 2. Настройка MikroTik
+
+#### 2.1. Создание veth интерфейса
+
+```routeros
 /interface veth add address=172.18.20.6/30 gateway=172.18.20.5 name=veth-xray
 /ip address add interface=veth-xray address=172.18.20.5/30
 ```
 
-### 2. Create environment variables
+#### 2.2. Переменные окружения
 
-```
+```routeros
 /container envs
 add list=xray key=SERVER_ADDRESS value=your-server.com
 add list=xray key=SERVER_PORT value=443
@@ -32,72 +60,258 @@ add list=xray key=SPX value=/
 add list=xray key=FP value=firefox
 ```
 
-### 3. Create container
+#### 2.3. Создание контейнера
 
-```
-/container add remote-image=ghcr.io/mkostelcev/xray-mikrotik-xhttp:latest interface=veth-xray envlist=xray root-dir=disk1/xray start-on-boot=yes logging=yes
-```
-
-### 4. Setup routing
-
-```
-/ip firewall nat add action=masquerade chain=srcnat src-address=172.18.20.0/30
-/ip route add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=vpn
+```routeros
+/container add remote-image=ghcr.io/mkostelcev/xray-mikrotik-xhttp:latest \
+    interface=veth-xray envlist=xray root-dir=disk1/xray \
+    start-on-boot=yes logging=yes
 ```
 
-## Environment Variables
+#### 2.4. NAT для трафика через контейнер
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| SERVER_ADDRESS | Yes | - | Xray server address (IP or domain) |
-| SERVER_PORT | No | 443 | Xray server port |
-| ID | Yes | - | VLESS UUID |
-| SNI | Yes | - | TLS SNI (Server Name Indication) |
-| PBK | Yes | - | Reality public key |
-| SID | Yes | - | Reality short ID |
-| SPX | No | / | xHTTP path and spiderX |
-| FP | No | firefox | TLS fingerprint (chrome, firefox, safari, edge) |
-| ENCRYPTION | No | none | VLESS encryption |
-| LOG_LEVEL | No | warning | Xray log level |
+```routeros
+/ip firewall nat add action=masquerade chain=srcnat out-interface=veth-xray comment="xray-masq"
+```
 
-## Building
+---
 
-### Local build for ARM (MikroTik)
+## Маршрутизация с Failover
+
+### Концепция "Anchor" маршрута
+
+Для отказоустойчивости между двумя провайдерами используется "якорный" IP (8.8.4.4), через который резолвятся все остальные маршруты.
+
+#### Anchor маршруты (обновляются через DHCP скрипты)
+
+```routeros
+/ip route
+add dst-address=8.8.4.4/32 gateway=<gw-ether1> distance=1 scope=10 check-gateway=ping comment="anchor-ether1"
+add dst-address=8.8.4.4/32 gateway=<gw-ether2> distance=2 scope=10 check-gateway=ping comment="anchor-ether2"
+```
+
+#### Маршрут к VPN серверу (recursive через anchor)
+
+```routeros
+/ip route add dst-address=147.45.50.47/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="xray-server-dynamic"
+```
+
+#### Default route через VPN
+
+```routeros
+/ip route add dst-address=0.0.0.0/0 gateway=172.18.20.6 distance=1 comment="vpn-default"
+```
+
+#### Маршруты к DoH серверам (для DNS резолва контейнером)
+
+```routeros
+/ip route
+add dst-address=1.1.1.1/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-cloudflare"
+add dst-address=9.9.9.9/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-quad9"
+```
+
+---
+
+## Скрипты для автоматизации
+
+### Автообновление маршрута к VPN серверу по DNS
+
+```routeros
+/system script add name=update-xray-route source={
+    :local domain "your-server.com"
+    :local newip [:resolve $domain]
+
+    /ip route remove [find where comment="xray-server-dynamic"]
+    /ip route add dst-address="$newip/32" gateway=8.8.4.4 target-scope=11 distance=1 comment="xray-server-dynamic"
+    :log info "Set xray route: $newip"
+}
+
+/system scheduler add name=update-xray-route interval=5m on-event=update-xray-route start-time=startup
+```
+
+### Обновление anchor маршрутов при смене DHCP gateway
+
+```routeros
+/system script
+add name=update-anchor-ether1 source={
+    :global anchorGw1
+    /ip route remove [find where comment="anchor-ether1"]
+    /ip route add dst-address=8.8.4.4/32 gateway=$anchorGw1 distance=1 scope=10 check-gateway=ping comment="anchor-ether1"
+    :log info "Anchor ether1: $anchorGw1"
+}
+
+add name=update-anchor-ether2 source={
+    :global anchorGw2
+    /ip route remove [find where comment="anchor-ether2"]
+    /ip route add dst-address=8.8.4.4/32 gateway=$anchorGw2 distance=2 scope=10 check-gateway=ping comment="anchor-ether2"
+    :log info "Anchor ether2: $anchorGw2"
+}
+
+/ip dhcp-client
+set [find interface=ether1] script=":global anchorGw1 \$\"gateway-address\"; /system script run update-anchor-ether1"
+set [find interface=ether2] script=":global anchorGw2 \$\"gateway-address\"; /system script run update-anchor-ether2"
+```
+
+---
+
+## BGP с Antifilter
+
+Для маршрутизации RU-трафика напрямую через провайдера, а остального через VPN.
+
+### BGP Community List
+
+```routeros
+/routing filter community-list
+add communities=65444:900,65445:643 list=ru-direct name=ru-communities
+```
+
+### BGP Filter
+
+```routeros
+/routing filter rule
+add chain=bgp-in rule="if (bgp-communities equal-list ru-direct) { set gw 8.8.4.4; set gw-check ping; set distance 1; accept }"
+add chain=bgp-in rule="reject"
+```
+
+### Применение к BGP connection
+
+```routeros
+/routing bgp connection set [find] input.filter=bgp-in
+```
+
+**Логика:**
+- Трафик к IP из списка antifilter (RU) → через провайдера
+- Весь остальной трафик → через VPN контейнер
+
+---
+
+## Переменные окружения
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|------------|-------------|--------------|----------|
+| SERVER_ADDRESS | Да | - | Адрес Xray сервера (IP или домен) |
+| SERVER_IP | Нет | - | IP сервера (переопределяет DNS резолв) |
+| SERVER_PORT | Нет | 443 | Порт Xray сервера |
+| ID | Да | - | VLESS UUID |
+| SNI | Да | - | TLS SNI для маскировки |
+| PBK | Да | - | Reality public key |
+| SID | Да | - | Reality short ID |
+| SPX | Нет | / | xHTTP path и spiderX |
+| FP | Нет | firefox | TLS fingerprint (chrome, firefox, safari, edge) |
+| ENCRYPTION | Нет | none | VLESS encryption |
+| LOG_LEVEL | Нет | warning | Уровень логов (debug, info, warning, error) |
+
+### Если DNS заблокирован
+
+Укажите IP сервера напрямую:
+
+```routeros
+/container envs add list=xray key=SERVER_IP value=147.45.50.47
+```
+
+---
+
+## Сборка
+
+### Локальная сборка для ARM (MikroTik)
 
 ```bash
 docker buildx build --platform linux/arm/v7 -t xray-mikrotik-xhttp:latest .
 ```
 
-### Build with specific versions
+### Сборка с конкретными версиями
 
 ```bash
 docker buildx build \
-  --build-arg XRAY_VERSION=v25.1.1 \
-  --build-arg TUN2SOCKS_VERSION=v2.5.2 \
+  --build-arg XRAY_VERSION=v26.1.18 \
+  --build-arg TUN2SOCKS_VERSION=v2.6.0 \
   --platform linux/arm/v7 \
   -t xray-mikrotik-xhttp:latest .
 ```
 
-### Build with latest versions
+---
 
-```bash
-docker buildx build \
-  --build-arg XRAY_VERSION=latest \
-  --build-arg TUN2SOCKS_VERSION=latest \
-  --platform linux/arm/v7 \
-  -t xray-mikrotik-xhttp:latest .
+## Диагностика
+
+### Проверка работы контейнера
+
+```routeros
+/container shell [find name~"xray"]
 ```
 
-## Server Configuration (3x-ui)
+```bash
+# Проверка DNS
+curl http://ifconfig.me --connect-timeout 10
 
-Create inbound with:
-- Protocol: VLESS
-- Port: 443
-- Security: Reality
-- Transport: xHTTP
-- Path: /
-- Dest: www.github.com:443
-- SNI: www.github.com
+# Таблица маршрутов
+route
+
+# Проверка процессов
+ps aux
+```
+
+### Логи контейнера
+
+```routeros
+/container/log print where container~"xray"
+```
+
+### Проверка маршрутов на MikroTik
+
+```routeros
+/ip route print where gateway=172.18.20.6
+/ip route print where comment~"anchor"
+```
+
+### Трафик через контейнер
+
+```routeros
+/tool torch interface=veth-xray
+```
+
+---
+
+## Известные ограничения
+
+- **ICMP (ping) не работает** — SOCKS5 поддерживает только TCP/UDP
+- **Scope/target-scope** — для recursive routing в RouterOS 7 требуется `scope=10` на anchor и `target-scope=11` на зависимых маршрутах
+- **Баг RouterOS** — переменные в `/ip route find where comment=$var` не работают корректно, используйте строковые литералы
+
+---
+
+## Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        MikroTik                             │
+│                                                             │
+│  ┌─────────────┐     ┌──────────────────────────────────┐  │
+│  │   Клиенты   │────▶│         Routing Table            │  │
+│  └─────────────┘     │                                  │  │
+│                      │  RU (BGP) ──▶ ether1/ether2      │  │
+│                      │  Other ────▶ veth-xray           │  │
+│                      └──────────────────────────────────┘  │
+│                                    │                        │
+│                                    ▼                        │
+│                      ┌──────────────────────────────────┐  │
+│                      │     Container (xray-mikrotik)    │  │
+│                      │                                  │  │
+│                      │  ┌────────┐    ┌─────────────┐  │  │
+│                      │  │  xray  │───▶│  tun2socks  │  │  │
+│                      │  │ SOCKS  │    │    tun0     │  │  │
+│                      │  └────────┘    └─────────────┘  │  │
+│                      └──────────────────────────────────┘  │
+│                                    │                        │
+└────────────────────────────────────│────────────────────────┘
+                                     │ VLESS+Reality+xHTTP
+                                     ▼
+                          ┌─────────────────────┐
+                          │    VPS (3x-ui)      │
+                          │    Xray Server      │
+                          └─────────────────────┘
+```
+
+---
 
 ## License
 
