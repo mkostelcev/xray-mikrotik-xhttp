@@ -17,8 +17,11 @@ echo "SNI: ${SNI}"
 echo "==="
 
 # Resolve server address using DoH (DNS over HTTPS) to bypass DNS hijacking
-# Uses multiple DoH servers with fallback
-DOH_SERVERS="1.1.1.1 8.8.8.8 9.9.9.9"
+# Primary: Cloudflare, Google, Quad9
+# Secondary: Cloudflare, Google, Quad9 (alternate), AdGuard
+DOH_SERVERS_PRIMARY="1.1.1.1 8.8.8.8 9.9.9.9"
+DOH_SERVERS_SECONDARY="1.0.0.1 8.8.4.4 149.112.112.112 94.140.14.14"
+DOH_SERVERS="${DOH_SERVERS_PRIMARY} ${DOH_SERVERS_SECONDARY}"
 
 resolve_doh() {
     local domain=$1

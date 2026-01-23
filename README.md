@@ -256,11 +256,27 @@ add dst-address=8.8.4.4/32 gateway=<gw-ether2> distance=2 scope=10 check-gateway
 
 #### Маршруты к DoH серверам (для DNS резолва контейнером)
 
+Контейнер использует DoH серверы для резолва VPN сервера:
+
+| Провайдер | Primary | Secondary |
+|-----------|---------|-----------|
+| Cloudflare | 1.1.1.1 | 1.0.0.1 |
+| Google | 8.8.8.8 | 8.8.4.4 |
+| Quad9 | 9.9.9.9 | 149.112.112.112 |
+| AdGuard | - | 94.140.14.14 |
+
 ```routeros
 /ip route
+# Primary DoH servers
 add dst-address=1.1.1.1/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-cloudflare"
 add dst-address=9.9.9.9/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-quad9"
+# Secondary DoH servers
+add dst-address=1.0.0.1/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-cloudflare-2"
+add dst-address=149.112.112.112/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-quad9-2"
+add dst-address=94.140.14.14/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-adguard"
 ```
+
+> **Примечание:** 8.8.8.8 и 8.8.4.4 используются как anchor, поэтому отдельные маршруты не нужны.
 
 ---
 
