@@ -138,7 +138,7 @@ if [ "${NUM_SERVERS}" -gt 1 ]; then
       }
     ],
     "rules": [
-      { "type": "field", "balancerTag": "vless-balance" }
+      { "type": "field", "inboundTag": ["socks-in"], "balancerTag": "vless-balance" }
     ]
   },
   "observatory": {
@@ -154,7 +154,7 @@ else
   "routing": {
     "domainStrategy": "AsIs",
     "rules": [
-      { "type": "field", "outboundTag": "proxy-1" }
+      { "type": "field", "inboundTag": ["socks-in"], "outboundTag": "proxy-1" }
     ]
   }
 EOJ
@@ -170,6 +170,7 @@ cat > "${CONFIG_FILE}" <<XRAYEOF
   },
   "inbounds": [
     {
+      "tag": "socks-in",
       "port": 10800,
       "listen": "127.0.0.1",
       "protocol": "socks",
