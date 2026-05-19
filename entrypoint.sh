@@ -40,16 +40,23 @@ resolve_doh() {
     for doh_server in ${DOH_SERVERS}; do
         echo "Trying DoH server ${doh_server}..." >&2
         local result=$(curl -s --connect-timeout 5 "https://${doh_server}/dns-query?name=${domain}&type=A" \
-            -H "accept: application/dns-json" 2>/dev/null | \
-            jq -r '.Answer[] | select(.type==1) | .data' 2>/dev/null | head -1)
+            -H "accept: application/dns-json" 2>/dev/null \
+            | tr ',' '\n' \
+            | sed -n 's/.*"data":"\([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\)".*/\1/p' \
+            | head -1)
         if [ -n "$result" ]; then
             echo "Resolved via ${doh_server}" >&2
             echo "$result"
             return 0
         fi
     done
-    echo "DoH failed, trying traditional DNS..." >&2
-    dig +short "$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1
+    echo "DoH failed, trying system resolver..." >&2
+    nslookup "$domain" 2>/dev/null | awk '
+        /^Name:/   { found=1; next }
+        found && /^Address/ {
+            ip = $NF; sub(/:.*/, "", ip)
+            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print ip; exit }
+        }'
 }
 
 # Resolve each server to an IP. Result: parallel array SERVER_IPS[i]
@@ -190,13 +197,6 @@ ${OUTBOUNDS_JSON},
 ${ROUTING_AND_OBSERVATORY}
 }
 XRAYEOF
-
-# Sanity-check JSON; fail early if it's malformed
-if ! jq -e . "${CONFIG_FILE}" > /dev/null; then
-    echo "ERROR: generated config.json is not valid JSON:"
-    cat "${CONFIG_FILE}"
-    exit 1
-fi
 
 echo "Generated xray config:"
 cat "${CONFIG_FILE}"

@@ -5,7 +5,7 @@ ARG TARGETARCH
 ARG XRAY_VERSION=v25.12.8
 ARG TUN2SOCKS_VERSION=v2.6.0
 
-RUN apk add --no-cache curl jq unzip file
+RUN apk add --no-cache curl jq unzip file upx
 
 # Download xray
 RUN XRAY_VERSION_RESOLVED="${XRAY_VERSION}" && \
@@ -23,7 +23,8 @@ RUN XRAY_VERSION_RESOLVED="${XRAY_VERSION}" && \
     unzip /tmp/xray.zip -d /tmp/xray && \
     mv /tmp/xray/xray /usr/local/bin/ && \
     chmod +x /usr/local/bin/xray && \
-    file /usr/local/bin/xray | grep -q "ELF" || (echo "ERROR: xray is not a valid ELF binary" && exit 1)
+    file /usr/local/bin/xray | grep -q "ELF" || (echo "ERROR: xray is not a valid ELF binary" && exit 1) && \
+    upx --best --lzma /usr/local/bin/xray
 
 # Download tun2socks
 RUN TUN2SOCKS_VERSION_RESOLVED="${TUN2SOCKS_VERSION}" && \
@@ -41,20 +42,25 @@ RUN TUN2SOCKS_VERSION_RESOLVED="${TUN2SOCKS_VERSION}" && \
     unzip /tmp/tun2socks.zip -d /tmp/tun2socks && \
     mv /tmp/tun2socks/tun2socks-linux-${ARCH} /usr/local/bin/tun2socks && \
     chmod +x /usr/local/bin/tun2socks && \
-    file /usr/local/bin/tun2socks | grep -q "ELF" || (echo "ERROR: tun2socks is not a valid ELF binary" && exit 1)
+    file /usr/local/bin/tun2socks | grep -q "ELF" || (echo "ERROR: tun2socks is not a valid ELF binary" && exit 1) && \
+    upx --best --lzma /usr/local/bin/tun2socks
 
 
 ### Stage 2: Runtime - minimal image
 FROM alpine:3.21
 
-# Runtime dependencies only
+# Runtime dependencies only.
+# Image must fit on 128 MiB flash MikroTik devices (hAP ax^3) with double
+# footprint during pull (tarball + extracted). Hence:
+#   - no bind-tools (~20 MiB w/ krb5/gss/libldap deps) — DNS fallback uses
+#     busybox nslookup (built-in to alpine);
+#   - no jq (~1.5 MiB) — DoH JSON parsed with sed in entrypoint.sh;
+#   - xray + tun2socks UPX-compressed in builder stage (~−20 MiB).
 RUN apk add --no-cache \
     bash \
     curl \
-    jq \
     iproute2 \
     ca-certificates \
-    bind-tools \
     && rm -rf /var/cache/apk/* /tmp/*
 
 # Copy binaries from builder
