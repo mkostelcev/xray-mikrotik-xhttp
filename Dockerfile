@@ -2,7 +2,7 @@
 FROM alpine:3.21 AS builder
 
 ARG TARGETARCH
-ARG XRAY_VERSION=v26.1.18
+ARG XRAY_VERSION=v25.12.8
 ARG TUN2SOCKS_VERSION=v2.6.0
 
 RUN apk add --no-cache curl jq unzip file
@@ -54,6 +54,7 @@ RUN apk add --no-cache \
     jq \
     iproute2 \
     ca-certificates \
+    bind-tools \
     && rm -rf /var/cache/apk/* /tmp/*
 
 # Copy binaries from builder
