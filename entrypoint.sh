@@ -280,7 +280,20 @@ echo "Routing table:"
 ip route
 
 echo ""
-echo "=== Container ready ==="
+echo "Starting xray..."
+/usr/local/bin/xray run -config "${CONFIG_FILE}" &
+XRAY_PID=$!
+
 echo ""
-echo "Starting xray (foreground)..."
-exec /usr/local/bin/xray run -config "${CONFIG_FILE}"
+echo "=== Container ready ==="
+
+# Supervise both processes: hev-socks5-tunnel runs in the background, so its
+# death would otherwise leave a "running" container with a dead tunnel. If
+# either process exits, stop the container so RouterOS auto-restart
+# (auto-restart-interval on the container) brings the whole stack back up.
+trap 'kill ${TUNNEL_PID} ${XRAY_PID} 2>/dev/null; exit 0' TERM INT
+wait -n ${TUNNEL_PID} ${XRAY_PID}
+rc=$?
+echo "ERROR: xray or hev-socks5-tunnel exited (rc=${rc}), stopping container" >&2
+kill ${TUNNEL_PID} ${XRAY_PID} 2>/dev/null
+exit 1
