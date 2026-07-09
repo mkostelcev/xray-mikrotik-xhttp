@@ -64,10 +64,10 @@ RUN apk add --no-cache \
 COPY --from=builder /usr/local/bin/xray /usr/local/bin/xray
 COPY --from=builder /usr/local/bin/hev-socks5-tunnel /usr/local/bin/hev-socks5-tunnel
 
-# Verify binaries work (hev-socks5-tunnel prints usage and exits non-zero
-# when run without arguments — that still proves the binary executes)
+# Verify binaries work (hev-socks5-tunnel has no --version and exits non-zero
+# without a config; any exit code except 126/127 proves the binary executes)
 RUN /usr/local/bin/xray version && \
-    { /usr/local/bin/hev-socks5-tunnel >/dev/null 2>&1 || [ $? -eq 1 ]; }
+    { /usr/local/bin/hev-socks5-tunnel >/dev/null 2>&1; rc=$?; [ $rc -ne 126 ] && [ $rc -ne 127 ]; }
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
