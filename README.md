@@ -1,12 +1,12 @@
 # xray-mikrotik-xhttp
 
-Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2socks для прозрачного проксирования.
+Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и hev-socks5-tunnel для прозрачного проксирования.
 
 ## Особенности
 
 - **[Xray-core](https://github.com/XTLS/Xray-core)** с xHTTP транспортом — обходит DPI, который обрывает долгоживущие TCP соединения
 - **VLESS + Reality** — маскировка под легитимный TLS трафик (github.com и др.)
-- **[tun2socks](https://github.com/xjasonlyu/tun2socks)** — прозрачное проксирование TCP/UDP трафика
+- **[hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)** — прозрачное проксирование TCP/UDP трафика (tun → SOCKS5, UDP через стандартный UDP ASSOCIATE)
 - **DoH (DNS over HTTPS)** — резолв VPN сервера через зашифрованный DNS, обход DNS hijacking
 - **Multi-arch** — поддержка amd64, arm64, arm/v7 (MikroTik)
 - **IP forwarding** — маршрутизация трафика от MikroTik через контейнер
@@ -35,7 +35,7 @@ Docker-контейнер для MikroTik с Xray VLESS+Reality+xHTTP и tun2soc
 | **hAP ac²** | 128 MB | ARM 716MHz 4-core | Не рекомендуется |
 | **hAP ac lite** | 64 MB | - | Не поддерживается |
 
-> **Примечание:** Для комфортной работы контейнера с xray+tun2socks рекомендуется минимум 512MB RAM. На устройствах с 256MB возможны проблемы при высокой нагрузке.
+> **Примечание:** Для комфортной работы контейнера с xray+hev-socks5-tunnel рекомендуется минимум 512MB RAM. На устройствах с 256MB возможны проблемы при высокой нагрузке.
 
 ---
 
@@ -404,7 +404,7 @@ docker buildx build --platform linux/arm/v7 -t xray-mikrotik-xhttp:latest .
 ```bash
 docker buildx build \
   --build-arg XRAY_VERSION=v26.1.18 \
-  --build-arg TUN2SOCKS_VERSION=v2.6.0 \
+  --build-arg HEV_TUNNEL_VERSION=2.15.0 \
   --platform linux/arm/v7 \
   -t xray-mikrotik-xhttp:latest .
 ```
@@ -477,7 +477,7 @@ ps aux
 │                      │     Container (xray-mikrotik)    │  │
 │                      │                                  │  │
 │                      │  ┌────────┐    ┌─────────────┐  │  │
-│                      │  │  xray  │───▶│  tun2socks  │  │  │
+│                      │  │  xray  │───▶│ hev-tunnel  │  │  │
 │                      │  │ SOCKS  │    │    tun0     │  │  │
 │                      │  └────────┘    └─────────────┘  │  │
 │                      └──────────────────────────────────┘  │
