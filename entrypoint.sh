@@ -246,13 +246,17 @@ ip route
 
 echo ""
 echo "Starting tun2socks..."
+# NOTE: no "-interface ${IFACE}" here — in tun2socks v2.6.0 it binds the
+# SOCKS5 UDP relay socket (ListenPacket with empty addr) to eth0 via
+# SO_BINDTODEVICE, so datagrams to the loopback proxy 127.0.0.1:10800 are
+# silently dropped and ALL UDP through the tunnel dies (Discord voice etc).
+# Loop protection is provided by the /32 bypass routes above instead.
 /usr/local/bin/tun2socks \
     -device ${TUN_NAME} \
     -proxy socks5://127.0.0.1:10800 \
-    -interface ${IFACE} \
     -tcp-sndbuf 3m \
     -tcp-rcvbuf 3m \
-    -loglevel silent &
+    -loglevel warn &
 TUN2SOCKS_PID=$!
 echo "tun2socks started with PID ${TUN2SOCKS_PID}"
 
