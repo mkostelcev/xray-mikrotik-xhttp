@@ -152,6 +152,18 @@ add list=xray key=SPX value=/
 add list=xray key=FP value=firefox
 ```
 
+Optional UDP/XUDP tuning:
+
+```routeros
+add list=xray key=MUX_CONCURRENCY value=-1
+add list=xray key=XUDP_CONCURRENCY value=16
+add list=xray key=XUDP_PROXY_UDP443 value=allow
+```
+
+By default the image enables XUDP for UDP traffic (`concurrency=-1`,
+`xudpConcurrency=16`). This keeps regular TCP connections out of mux while
+allowing UDP applications such as Discord RTC to work through VLESS/xHTTP.
+
 #### 2.3. Создание контейнера
 
 **С хранением на USB/SD (персистентный):**
