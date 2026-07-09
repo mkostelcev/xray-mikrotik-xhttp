@@ -3,7 +3,7 @@ FROM alpine:3.21 AS builder
 
 ARG TARGETARCH
 ARG XRAY_VERSION=v25.12.8
-ARG TUN2SOCKS_VERSION=v2.6.0
+ARG HEV_TUNNEL_VERSION=2.15.0
 
 RUN apk add --no-cache curl jq unzip file upx
 
@@ -26,24 +26,21 @@ RUN XRAY_VERSION_RESOLVED="${XRAY_VERSION}" && \
     file /usr/local/bin/xray | grep -q "ELF" || (echo "ERROR: xray is not a valid ELF binary" && exit 1) && \
     upx --best --lzma /usr/local/bin/xray
 
-# Download tun2socks
-RUN TUN2SOCKS_VERSION_RESOLVED="${TUN2SOCKS_VERSION}" && \
-    if [ "${TUN2SOCKS_VERSION}" = "latest" ]; then \
-        TUN2SOCKS_VERSION_RESOLVED=$(curl -s https://api.github.com/repos/xjasonlyu/tun2socks/releases/latest | jq -r .tag_name); \
+# Download hev-socks5-tunnel (static release binary ~0.35 MiB, no upx needed)
+RUN HEV_VERSION_RESOLVED="${HEV_TUNNEL_VERSION}" && \
+    if [ "${HEV_TUNNEL_VERSION}" = "latest" ]; then \
+        HEV_VERSION_RESOLVED=$(curl -s https://api.github.com/repos/heiher/hev-socks5-tunnel/releases/latest | jq -r .tag_name); \
     fi && \
     case "${TARGETARCH}" in \
-        "amd64") ARCH="amd64" ;; \
+        "amd64") ARCH="x86_64" ;; \
         "arm64") ARCH="arm64" ;; \
-        "arm") ARCH="armv7" ;; \
-        *) ARCH="amd64" ;; \
+        "arm") ARCH="arm32v7hf" ;; \
+        *) ARCH="x86_64" ;; \
     esac && \
-    echo "Downloading tun2socks ${TUN2SOCKS_VERSION_RESOLVED} for ${ARCH}..." && \
-    curl -L -f -o /tmp/tun2socks.zip "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION_RESOLVED}/tun2socks-linux-${ARCH}.zip" && \
-    unzip /tmp/tun2socks.zip -d /tmp/tun2socks && \
-    mv /tmp/tun2socks/tun2socks-linux-${ARCH} /usr/local/bin/tun2socks && \
-    chmod +x /usr/local/bin/tun2socks && \
-    file /usr/local/bin/tun2socks | grep -q "ELF" || (echo "ERROR: tun2socks is not a valid ELF binary" && exit 1) && \
-    upx --best --lzma /usr/local/bin/tun2socks
+    echo "Downloading hev-socks5-tunnel ${HEV_VERSION_RESOLVED} for ${ARCH}..." && \
+    curl -L -f -o /usr/local/bin/hev-socks5-tunnel "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_VERSION_RESOLVED}/hev-socks5-tunnel-linux-${ARCH}" && \
+    chmod +x /usr/local/bin/hev-socks5-tunnel && \
+    file /usr/local/bin/hev-socks5-tunnel | grep -q "ELF" || (echo "ERROR: hev-socks5-tunnel is not a valid ELF binary" && exit 1)
 
 
 ### Stage 2: Runtime - minimal image
@@ -55,7 +52,7 @@ FROM alpine:3.21
 #   - no bind-tools (~20 MiB w/ krb5/gss/libldap deps) — DNS fallback uses
 #     busybox nslookup (built-in to alpine);
 #   - no jq (~1.5 MiB) — DoH JSON parsed with sed in entrypoint.sh;
-#   - xray + tun2socks UPX-compressed in builder stage (~−20 MiB).
+#   - xray UPX-compressed in builder stage (~−20 MiB).
 RUN apk add --no-cache \
     bash \
     curl \
@@ -65,11 +62,12 @@ RUN apk add --no-cache \
 
 # Copy binaries from builder
 COPY --from=builder /usr/local/bin/xray /usr/local/bin/xray
-COPY --from=builder /usr/local/bin/tun2socks /usr/local/bin/tun2socks
+COPY --from=builder /usr/local/bin/hev-socks5-tunnel /usr/local/bin/hev-socks5-tunnel
 
-# Verify binaries work
+# Verify binaries work (hev-socks5-tunnel prints usage and exits non-zero
+# when run without arguments — that still proves the binary executes)
 RUN /usr/local/bin/xray version && \
-    /usr/local/bin/tun2socks --version
+    { /usr/local/bin/hev-socks5-tunnel >/dev/null 2>&1 || [ $? -eq 1 ]; }
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

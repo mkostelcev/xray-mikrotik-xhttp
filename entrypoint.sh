@@ -215,13 +215,7 @@ echo "Default gateway: ${GATEWAY}"
 echo "Default interface: ${IFACE}"
 
 TUN_NAME="tun0"
-TUN_ADDR="172.31.200.10/30"
-TUN_GW="172.31.200.9"
-
-echo "Setting up ${TUN_NAME}..."
-ip tuntap add mode tun dev ${TUN_NAME} 2>/dev/null || true
-ip addr add ${TUN_ADDR} dev ${TUN_NAME} 2>/dev/null || true
-ip link set ${TUN_NAME} up
+TUN_ADDR="172.31.200.10"
 
 # Bypass routes for ALL servers (each /32 via host gateway, never via tunnel)
 for srv_ip in "${SERVER_IPS[@]}"; do
@@ -234,31 +228,56 @@ for DOH_IP in ${DOH_SERVERS}; do
     ip route add "${DOH_IP}/32" via "${GATEWAY}" dev "${IFACE}" 2>/dev/null || true
 done
 
-echo "Setting default route via ${TUN_NAME}..."
-ip route del default 2>/dev/null || true
-ip route add default via ${TUN_GW} dev ${TUN_NAME}
-
 echo "Enabling IP forwarding..."
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
-echo "Routing table:"
-ip route
+# Drop the eth0 default BEFORE starting the tunnel: if it fails to come up,
+# forwarded client traffic must blackhole (fail closed), not leak via ISP.
+# Bypass /32 routes above keep server/DoH reachability intact.
+echo "Removing default route via ${IFACE}..."
+ip route del default 2>/dev/null || true
+
+# hev-socks5-tunnel creates and configures the tun device itself.
+# socks5.udp='udp' = standard SOCKS5 UDP ASSOCIATE (xray socks inbound
+# supports it); do NOT set 'tcp' — that needs hev-socks5-server on the far end.
+HEV_CONFIG="${CONFIG_DIR}/hev-tunnel.yaml"
+cat > "${HEV_CONFIG}" <<HEVEOF
+tunnel:
+  name: ${TUN_NAME}
+  mtu: 8500
+  ipv4: ${TUN_ADDR}
+socks5:
+  address: 127.0.0.1
+  port: 10800
+  udp: 'udp'
+misc:
+  log-file: stderr
+  log-level: warn
+HEVEOF
 
 echo ""
-echo "Starting tun2socks..."
-# NOTE: no "-interface ${IFACE}" here — in tun2socks v2.6.0 it binds the
-# SOCKS5 UDP relay socket (ListenPacket with empty addr) to eth0 via
-# SO_BINDTODEVICE, so datagrams to the loopback proxy 127.0.0.1:10800 are
-# silently dropped and ALL UDP through the tunnel dies (Discord voice etc).
-# Loop protection is provided by the /32 bypass routes above instead.
-/usr/local/bin/tun2socks \
-    -device ${TUN_NAME} \
-    -proxy socks5://127.0.0.1:10800 \
-    -tcp-sndbuf 3m \
-    -tcp-rcvbuf 3m \
-    -loglevel warn &
-TUN2SOCKS_PID=$!
-echo "tun2socks started with PID ${TUN2SOCKS_PID}"
+echo "Starting hev-socks5-tunnel..."
+/usr/local/bin/hev-socks5-tunnel "${HEV_CONFIG}" &
+TUNNEL_PID=$!
+
+# Wait for the tun device to come up, then move the default route onto it
+for i in $(seq 1 30); do
+    ip link show ${TUN_NAME} >/dev/null 2>&1 && break
+    kill -0 ${TUNNEL_PID} 2>/dev/null || { echo "ERROR: hev-socks5-tunnel died on startup" >&2; exit 1; }
+    sleep 0.5
+done
+if ! ip link show ${TUN_NAME} >/dev/null 2>&1; then
+    echo "ERROR: ${TUN_NAME} did not appear within 15s" >&2
+    exit 1
+fi
+echo "hev-socks5-tunnel started with PID ${TUNNEL_PID}"
+
+echo "Setting default route via ${TUN_NAME}..."
+ip link set ${TUN_NAME} up
+ip route add default dev ${TUN_NAME}
+
+echo "Routing table:"
+ip route
 
 echo ""
 echo "=== Container ready ==="
