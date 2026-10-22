@@ -127,7 +127,13 @@ build_outbounds() {
           "path": "${XHTTP_PATH}",
           "extra": {
             "mode": "${XHTTP_MODE}",
-            "xPaddingBytes": "100-1000"
+            "xPaddingBytes": "100-1000",
+            "xmux": {
+              "cMaxReuseTimes": "0",
+              "hMaxRequestTimes": "600-900",
+              "hMaxReusableSecs": "1800-3000",
+              "maxConnections": "3"
+            }
           }
         },
         "realitySettings": {
