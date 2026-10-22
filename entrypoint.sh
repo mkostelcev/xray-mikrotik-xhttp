@@ -137,6 +137,7 @@ build_outbounds() {
           }
         },
         "realitySettings": {
+          "show": true,
           "fingerprint": "${FP:-firefox}",
           "password": "${PBK}",
           "serverName": "${SNI}",
