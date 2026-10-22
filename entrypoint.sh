@@ -1,4 +1,3 @@
-
 #!/bin/bash
 set -e
 
@@ -15,24 +14,13 @@ mkdir -p "${CONFIG_DIR}"
 # Reality params (ID, PBK, SID, SNI, FP, SPX, ENCRYPTION) are shared across servers.
 # SERVER_PORT can also be comma-separated; if shorter than SERVER_ADDRESS list,
 # the first port is reused for the missing entries.
-#
-# XHTTP_PATH: xHTTP request path (default: /)
-# XHTTP_MODE: xHTTP transport mode (default: auto)
-# XHTTP_HOST: xHTTP Host header (default: SNI)
-# LOG_LEVEL: Xray log level (default: warning)
-
 IFS=',' read -ra _SERVERS_RAW <<< "${SERVER_ADDRESS}"
 IFS=',' read -ra _PORTS_RAW   <<< "${SERVER_PORT:-443}"
 declare -a SERVERS PORTS
 for s in "${_SERVERS_RAW[@]}"; do SERVERS+=("$(echo "$s" | tr -d ' ')"); done
-for p in "${_PORTS_RAW[@]}";   do PORTS+=("$(echo "$p" | tr -d ' ')"); done
+for p in "${_PORTS_RAW[@]}";   do PORTS+=("$(echo   "$p" | tr -d ' ')"); done
 NUM_SERVERS=${#SERVERS[@]}
 DEFAULT_PORT="${PORTS[0]:-443}"
-
-# xHTTP settings
-XHTTP_PATH="${XHTTP_PATH:-/}"
-XHTTP_MODE="${XHTTP_MODE:-auto}"
-XHTTP_HOST="${XHTTP_HOST:-${SNI}}"
 
 echo "=== xray-mikrotik-xhttp container ==="
 echo "Servers (${NUM_SERVERS}):"
@@ -40,10 +28,6 @@ for i in "${!SERVERS[@]}"; do
     printf '  %d) %s:%s\n' "$((i+1))" "${SERVERS[$i]}" "${PORTS[$i]:-$DEFAULT_PORT}"
 done
 echo "SNI: ${SNI}"
-echo "xHTTP host: ${XHTTP_HOST}"
-echo "xHTTP mode: ${XHTTP_MODE}"
-echo "xHTTP path: ${XHTTP_PATH}"
-echo "Log level: ${LOG_LEVEL:-warning}"
 echo "==="
 
 # DoH resolvers — bypassed via host gateway so initial DNS works even if VPN down
@@ -128,21 +112,7 @@ build_outbounds() {
       "streamSettings": {
         "network": "xhttp",
         "security": "reality",
-        "xhttpSettings": {
-          "host": "${XHTTP_HOST}",
-          "mode": "${XHTTP_MODE}",
-          "path": "${XHTTP_PATH}",
-          "extra": {
-            "mode": "${XHTTP_MODE}",
-            "xPaddingBytes": "100-1000",
-            "xmux": {
-              "cMaxReuseTimes": "0",
-              "hMaxRequestTimes": "600-900",
-              "hMaxReusableSecs": "1800-3000",
-              "maxConnections": "3"
-            }
-          }
-        },
+        "xhttpSettings": { "mode": "auto", "path": "${SPX:-/}" },
         "realitySettings": {
           "fingerprint": "${FP:-firefox}",
           "serverName": "${SNI}",
