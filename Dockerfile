@@ -70,6 +70,6 @@ RUN /usr/local/bin/xray version && \
     { /usr/local/bin/hev-socks5-tunnel >/dev/null 2>&1; rc=$?; [ $rc -ne 126 ] && [ $rc -ne 127 ]; }
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
