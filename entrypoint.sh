@@ -118,12 +118,6 @@ build_outbounds() {
           }
         ]
       },
-      "mux": {
-        "enabled": true,
-        "concurrency": ${MUX_CONCURRENCY:--1},
-        "xudpConcurrency": ${XUDP_CONCURRENCY:-16},
-        "xudpProxyUDP443": "${XUDP_PROXY_UDP443:-allow}"
-      },
       "streamSettings": {
         "network": "xhttp",
         "security": "reality",
@@ -144,6 +138,7 @@ build_outbounds() {
         },
         "realitySettings": {
           "fingerprint": "${FP:-firefox}",
+          "password": "${PBK}",
           "serverName": "${SNI}",
           "publicKey": "${PBK}",
           "shortId": "${SID}",
