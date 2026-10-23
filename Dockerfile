@@ -3,7 +3,7 @@ FROM alpine:3.21 AS builder
 
 ARG TARGETARCH
 ARG XRAY_VERSION=v25.12.8
-ARG HEV_TUNNEL_VERSION=2.15.0
+ARG HEV_TUNNEL_VERSION=2.16.0
 
 RUN apk add --no-cache curl jq unzip file upx
 
