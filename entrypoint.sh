@@ -278,6 +278,7 @@ cat > "${HEV_CONFIG}" <<HEVEOF
 tunnel:
   name: ${TUN_NAME}
   mtu: 8500
+  icmp: 'reply'
   ipv4: ${TUN_ADDR}
 socks5:
   address: 127.0.0.1
