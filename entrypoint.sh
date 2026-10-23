@@ -33,6 +33,9 @@ XHTTP_PATH="${XHTTP_PATH:-/}"
 XHTTP_MODE="${XHTTP_MODE:-auto}"
 XHTTP_HOST="${XHTTP_HOST:-${SNI}}"
 
+# HEV settings
+HEV_LOG="${HEV_LOG:-warn}"
+
 echo "=== xray-mikrotik-xhttp container ==="
 echo "Servers (${NUM_SERVERS}):"
 for i in "${!SERVERS[@]}"; do
@@ -277,7 +280,7 @@ socks5:
   udp: 'udp'
 misc:
   log-file: stderr
-  log-level: warn
+  log-level: ${HEV_LOG}
 HEVEOF
 
 echo ""
