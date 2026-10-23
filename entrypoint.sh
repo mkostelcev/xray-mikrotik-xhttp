@@ -36,6 +36,9 @@ XHTTP_HOST="${XHTTP_HOST:-${SNI}}"
 # HEV settings
 HEV_LOG="${HEV_LOG:-warn}"
 
+# REALITY debug logging; defaults to disabled
+REALITY_SHOW="${REALITY_SHOW:-false}"
+
 echo "=== xray-mikrotik-xhttp container ==="
 echo "Servers (${NUM_SERVERS}):"
 for i in "${!SERVERS[@]}"; do
@@ -46,6 +49,8 @@ echo "xHTTP host: ${XHTTP_HOST}"
 echo "xHTTP mode: ${XHTTP_MODE}"
 echo "xHTTP path: ${XHTTP_PATH}"
 echo "Log level: ${LOG_LEVEL:-warning}"
+echo "HEV Log: ${HEV_LOG}"
+echo "Reality Log: ${REALITY_SHOW}"
 echo "==="
 
 # DoH resolvers — bypassed via host gateway so initial DNS works even if VPN down
@@ -140,7 +145,7 @@ build_outbounds() {
           }
         },
         "realitySettings": {
-          "show": true,
+          "show": ${REALITY_SHOW},
           "fingerprint": "${FP:-firefox}",
           "password": "${PBK}",
           "serverName": "${SNI}",
