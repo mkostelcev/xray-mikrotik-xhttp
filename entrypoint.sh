@@ -216,6 +216,14 @@ echo "Default interface: ${IFACE}"
 
 TUN_NAME="tun0"
 TUN_ADDR="172.31.200.10"
+ENABLE_IPV6="${ENABLE_IPV6:-0}"
+IPV6_ADDRESS="${IPV6_ADDRESS:-fd00:18:20::6/126}"
+IPV6_GATEWAY="${IPV6_GATEWAY:-fd00:18:20::5}"
+IPV6_TUN_ADDRESS="${IPV6_TUN_ADDRESS:-fd00:31:200::10}"
+if [ "$ENABLE_IPV6" = "1" ]; then
+    ip -6 address replace "$IPV6_ADDRESS" dev "$IFACE"
+    echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+fi
 
 # Bypass routes for ALL servers (each /32 via host gateway, never via tunnel)
 for srv_ip in "${SERVER_IPS[@]}"; do
@@ -241,11 +249,16 @@ ip route del default 2>/dev/null || true
 # socks5.udp='udp' = standard SOCKS5 UDP ASSOCIATE (xray socks inbound
 # supports it); do NOT set 'tcp' — that needs hev-socks5-server on the far end.
 HEV_CONFIG="${CONFIG_DIR}/hev-tunnel.yaml"
+IPV6_TUN_CONFIG=""
+if [ "$ENABLE_IPV6" = "1" ]; then
+    IPV6_TUN_CONFIG="  ipv6: '${IPV6_TUN_ADDRESS}'"
+fi
 cat > "${HEV_CONFIG}" <<HEVEOF
 tunnel:
   name: ${TUN_NAME}
   mtu: 8500
   ipv4: ${TUN_ADDR}
+${IPV6_TUN_CONFIG}
 socks5:
   address: 127.0.0.1
   port: 10800
@@ -275,6 +288,12 @@ echo "hev-socks5-tunnel started with PID ${TUNNEL_PID}"
 echo "Setting default route via ${TUN_NAME}..."
 ip link set ${TUN_NAME} up
 ip route add default dev ${TUN_NAME}
+if [ "$ENABLE_IPV6" = "1" ]; then
+    ip -6 route replace default dev "$TUN_NAME"
+    # Ответы из TUN возвращаем роутеру независимо от DHCPv6-префикса LAN.
+    ip -6 route replace default via "$IPV6_GATEWAY" dev "$IFACE" table 106
+    ip -6 rule add priority 106 iif "$TUN_NAME" lookup 106
+fi
 
 echo "Routing table:"
 ip route
