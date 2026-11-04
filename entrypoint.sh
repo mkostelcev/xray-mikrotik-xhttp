@@ -63,7 +63,9 @@ resolve_doh() {
 declare -a SERVER_IPS
 for i in "${!SERVERS[@]}"; do
     SRV="${SERVERS[$i]}"
-    if echo "${SRV}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    if [[ "$SRV" == *:* ]]; then
+        ip_addr="$SRV"
+    elif echo "${SRV}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
         ip_addr="${SRV}"
         echo "[$((i+1))] ${SRV} is already IP"
     else
@@ -77,6 +79,31 @@ for i in "${!SERVERS[@]}"; do
     fi
     SERVER_IPS+=("$ip_addr")
 done
+
+SOCKOPT_JSON='{}'
+if [ "${ENABLE_IPV6:-0}" = "1" ]; then
+    SOCKOPT_JSON='{"domainStrategy":"UseIP","happyEyeballs":{"prioritizeIPv6":true,"tryDelayMs":250,"interleave":1,"maxConcurrentTry":4}}'
+fi
+
+# Все AAAA серверов должны обходить TUN, как и их A-адреса.
+SERVER_IPV6_IPS=()
+if [ "${ENABLE_IPV6:-0}" = "1" ]; then
+    for server in "${SERVERS[@]}"; do
+        if [[ "$server" == *:* ]]; then
+            SERVER_IPV6_IPS+=("$server")
+            continue
+        fi
+        for resolver in ${DOH_SERVERS}; do
+            if response=$(curl -fsS --connect-timeout 3 --max-time 5 "https://${resolver}/dns-query?name=${server}&type=AAAA" -H 'accept: application/dns-json'); then
+                [[ "$response" == *'"Status":0'* ]] || continue
+                while IFS= read -r address; do
+                    [ -n "$address" ] && SERVER_IPV6_IPS+=("$address")
+                done < <(printf '%s' "$response" | tr ',' '\n' | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | grep -E '^[0-9a-fA-F:]+$')
+                break
+            fi
+        done
+    done
+fi
 
 # Build outbounds JSON. One vless outbound per server, tag=proxy-1..N
 build_outbounds() {
@@ -110,6 +137,7 @@ build_outbounds() {
         "xudpProxyUDP443": "${XUDP_PROXY_UDP443:-allow}"
       },
       "streamSettings": {
+        "sockopt": ${SOCKOPT_JSON},
         "network": "xhttp",
         "security": "reality",
         "xhttpSettings": { "mode": "auto", "path": "${SPX:-/}" },
@@ -223,10 +251,14 @@ IPV6_TUN_ADDRESS="${IPV6_TUN_ADDRESS:-fd00:31:200::10}"
 if [ "$ENABLE_IPV6" = "1" ]; then
     ip -6 address replace "$IPV6_ADDRESS" dev "$IFACE"
     echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+    for server6 in "${SERVER_IPV6_IPS[@]}"; do
+        ip -6 route replace "$server6/128" via "$IPV6_GATEWAY" dev "$IFACE"
+    done
 fi
 
 # Bypass routes for ALL servers (each /32 via host gateway, never via tunnel)
 for srv_ip in "${SERVER_IPS[@]}"; do
+    [[ "$srv_ip" == *:* ]] && continue
     echo "Adding bypass route ${srv_ip}/32 via ${GATEWAY}..."
     ip route add "${srv_ip}/32" via "${GATEWAY}" dev "${IFACE}" 2>/dev/null || true
 done
