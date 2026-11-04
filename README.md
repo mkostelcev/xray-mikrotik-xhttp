@@ -106,7 +106,7 @@ set registry-url=https://ghcr.io tmpdir=tmpfs1/tmp
 
 ```routeros
 # Временно установить публичный DNS для скачивания образа
-/ip dns set servers=8.8.8.8,1.1.1.1
+/ip dns set servers=9.9.9.9,149.112.112.112
 ```
 
 ---
@@ -268,27 +268,24 @@ add dst-address=8.8.4.4/32 gateway=<gw-ether2> distance=2 scope=10 check-gateway
 
 #### Маршруты к DoH серверам (для DNS резолва контейнером)
 
-Контейнер использует DoH серверы для резолва VPN сервера:
+Контейнер получает A/AAAA VPN-сервера через стандартный RFC8484 DoH с проверкой TLS-сертификата. Системный DNS fallback использует те же резолверы. Google и Cloudflare в bootstrap не участвуют:
 
 | Провайдер | Primary | Secondary |
 |-----------|---------|-----------|
-| Cloudflare | 1.1.1.1 | 1.0.0.1 |
-| Google | 8.8.8.8 | 8.8.4.4 |
 | Quad9 | 9.9.9.9 | 149.112.112.112 |
-| AdGuard | - | 94.140.14.14 |
+| AdGuard | 94.140.14.14 | 94.140.15.15 |
 
 ```routeros
 /ip route
 # Primary DoH servers
-add dst-address=1.1.1.1/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-cloudflare"
 add dst-address=9.9.9.9/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-quad9"
 # Secondary DoH servers
-add dst-address=1.0.0.1/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-cloudflare-2"
 add dst-address=149.112.112.112/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-quad9-2"
 add dst-address=94.140.14.14/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-adguard"
+add dst-address=94.140.15.15/32 gateway=8.8.4.4 target-scope=11 distance=1 comment="doh-adguard-2"
 ```
 
-> **Примечание:** 8.8.8.8 и 8.8.4.4 используются как anchor, поэтому отдельные маршруты не нужны.
+> `8.8.4.4` здесь используется только как рекурсивный next-hop/ICMP anchor, а не DNS. Старые прямые исключения Cloudflare (`1.1.1.1`, `1.0.0.1`, `104.16.249.249`) удалять после обновления контейнера, чтобы Cloudflare trace тоже шёл через VPN. При использовании BGP соответствующие маршруты настраиваются в фиде.
 
 ---
 

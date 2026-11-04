@@ -51,7 +51,7 @@ FROM alpine:3.21
 # footprint during pull (tarball + extracted). Hence:
 #   - no bind-tools (~20 MiB w/ krb5/gss/libldap deps) — DNS fallback uses
 #     busybox nslookup (built-in to alpine);
-#   - no jq (~1.5 MiB) — DoH JSON parsed with sed in entrypoint.sh;
+#   - no jq (~1.5 MiB) — DoH wire format parsed with POSIX awk in resolve-doh;
 #   - xray UPX-compressed in builder stage (~−20 MiB).
 RUN apk add --no-cache \
     bash \
