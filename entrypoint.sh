@@ -292,7 +292,7 @@ if [ "$ENABLE_IPV6" = "1" ]; then
     ip -6 route replace default dev "$TUN_NAME"
     # Ответы из TUN возвращаем роутеру независимо от DHCPv6-префикса LAN.
     ip -6 route replace default via "$IPV6_GATEWAY" dev "$IFACE" table 106
-    ip -6 rule add priority 106 iif "$TUN_NAME" lookup 106
+    ip -6 rule add priority 1006 iif "$TUN_NAME" lookup 106
 fi
 
 echo "Routing table:"
