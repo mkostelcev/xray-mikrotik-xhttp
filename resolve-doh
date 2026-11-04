@@ -1,0 +1,60 @@
+#!/bin/bash
+# Минимальный RFC8484 resolver: curl + POSIX awk, без JSON API и новых runtime-зависимостей.
+set -eu
+name=${1:?domain required}
+record=${2:-A}
+resolvers=${3:-"9.9.9.9 149.112.112.112 94.140.14.14 94.140.15.15"}
+case "$record" in A) qtype=1 ;; AAAA) qtype=28 ;; *) exit 2 ;; esac
+[[ ${#name} -le 253 ]] || exit 2
+umask 077
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+printf '\000\000\001\000\000\001\000\000\000\000\000\000' > "$work/query"
+IFS=. read -ra labels <<< "$name"
+for label in "${labels[@]}"; do
+    [[ -n "$label" && ${#label} -le 63 && "$label" != *[^a-zA-Z0-9_-]* ]] || exit 2
+    printf '%b%s' "\\$(printf '%03o' "${#label}")" "$label" >> "$work/query"
+done
+printf '\000\000%b\000\001' "\\$(printf '%03o' "$qtype")" >> "$work/query"
+for resolver in $resolvers; do
+    if ! curl -fsS --connect-timeout 3 --max-time 6 \
+        -H 'content-type: application/dns-message' -H 'accept: application/dns-message' \
+        --data-binary "@$work/query" "https://$resolver/dns-query" -o "$work/answer"; then
+        continue
+    fi
+    if od -An -v -t u1 "$work/answer" | awk -v requested="$qtype" '
+        function u16(i) { return b[i]*256+b[i+1] }
+        function skipname(i, wirelen, count) {
+            for (count=0; count<128 && i<n; count++) {
+                wirelen=b[i]; if (wirelen>=192) return i+2;
+                if (wirelen==0) return i+1;
+                if (wirelen>63) return -1;
+                i+=wirelen+1;
+            }
+            return -1;
+        }
+        { for(i=1;i<=NF;i++) b[n++]=$i }
+        END {
+            if(n<12 || b[0]!=0 || b[1]!=0 || b[2]<128 || int(b[2]/2)%2!=0 || b[3]%16!=0) exit 1;
+            p=12; questions=u16(4); answers=u16(6);
+            for(q=0;q<questions;q++) {p=skipname(p);if(p<0 || p+4>n) exit 1;p+=4}
+            output="";
+            for(a=0;a<answers;a++) {
+                p=skipname(p);if(p<0 || p+10>n) exit 1;
+                type=u16(p); class=u16(p+2); wirelen=u16(p+8); p+=10;
+                if(p+wirelen>n) exit 1;
+                if(class==1 && type==requested && type==1 && wirelen==4)
+                    output=output sprintf("%d.%d.%d.%d\n",b[p],b[p+1],b[p+2],b[p+3]);
+                if(class==1 && type==requested && type==28 && wirelen==16) {
+                    for(j=0;j<16;j+=2) output=output sprintf("%s%x",j?":":"",u16(p+j));
+                    output=output "\n";
+                }
+                p+=wirelen;
+            }
+            printf "%s",output;
+        }' > "$work/result"; then
+        cat "$work/result"
+        exit 0
+    fi
+done
+exit 1

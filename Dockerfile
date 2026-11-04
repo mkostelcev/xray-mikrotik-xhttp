@@ -69,6 +69,8 @@ COPY --from=builder /usr/local/bin/hev-socks5-tunnel /usr/local/bin/hev-socks5-t
 RUN /usr/local/bin/xray version && \
     { /usr/local/bin/hev-socks5-tunnel >/dev/null 2>&1; rc=$?; [ $rc -ne 126 ] && [ $rc -ne 127 ]; }
 
+COPY resolve-doh /usr/local/bin/resolve-doh
+RUN chmod +x /usr/local/bin/resolve-doh
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

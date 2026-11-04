@@ -31,32 +31,24 @@ echo "SNI: ${SNI}"
 echo "==="
 
 # DoH resolvers — bypassed via host gateway so initial DNS works even if VPN down
-DOH_SERVERS_PRIMARY="1.1.1.1 8.8.8.8 9.9.9.9"
-DOH_SERVERS_SECONDARY="1.0.0.1 8.8.4.4 149.112.112.112 94.140.14.14"
+DOH_SERVERS_PRIMARY="9.9.9.9 149.112.112.112"
+DOH_SERVERS_SECONDARY="94.140.14.14 94.140.15.15"
 DOH_SERVERS="${DOH_SERVERS_PRIMARY} ${DOH_SERVERS_SECONDARY}"
 
+# Xray и системный fallback используют те же выбранные резолверы.
+for resolver in ${DNS_SERVERS:-$DOH_SERVERS}; do
+    printf 'nameserver %s\n' "$resolver"
+done > /etc/resolv.conf
+
 resolve_doh() {
-    local domain=$1
-    for doh_server in ${DOH_SERVERS}; do
-        echo "Trying DoH server ${doh_server}..." >&2
-        local result=$(curl -s --connect-timeout 5 "https://${doh_server}/dns-query?name=${domain}&type=A" \
-            -H "accept: application/dns-json" 2>/dev/null \
-            | tr ',' '\n' \
-            | sed -n 's/.*"data":"\([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\)".*/\1/p' \
-            | head -1)
-        if [ -n "$result" ]; then
-            echo "Resolved via ${doh_server}" >&2
-            echo "$result"
-            return 0
-        fi
-    done
-    echo "DoH failed, trying system resolver..." >&2
-    nslookup "$domain" 2>/dev/null | awk '
-        /^Name:/   { found=1; next }
-        found && /^Address/ {
-            ip = $NF; sub(/:.*/, "", ip)
-            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print ip; exit }
-        }'
+    local answers
+    if answers=$(/usr/local/bin/resolve-doh "$1" A "$DOH_SERVERS"); then
+        printf '%s\n' "$answers" | head -1
+        return 0
+    fi
+    nslookup "$1" 9.9.9.9 2>/dev/null | awk '
+        /^Name:/ { found=1; next }
+        found && /^Address/ { ip=$NF; if(ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print ip;exit} }'
 }
 
 # Resolve each server to an IP. Result: parallel array SERVER_IPS[i]
@@ -85,7 +77,7 @@ if [ "${ENABLE_IPV6:-0}" = "1" ]; then
     SOCKOPT_JSON='{"domainStrategy":"UseIP","happyEyeballs":{"prioritizeIPv6":true,"tryDelayMs":250,"interleave":1,"maxConcurrentTry":4}}'
 fi
 
-# Все AAAA серверов должны обходить TUN, как и их A-адреса.
+# Все AAAA серверов обходят TUN; отсутствие AAAA оставляет IPv4 fallback.
 SERVER_IPV6_IPS=()
 if [ "${ENABLE_IPV6:-0}" = "1" ]; then
     for server in "${SERVERS[@]}"; do
@@ -93,15 +85,14 @@ if [ "${ENABLE_IPV6:-0}" = "1" ]; then
             SERVER_IPV6_IPS+=("$server")
             continue
         fi
-        for resolver in ${DOH_SERVERS}; do
-            if response=$(curl -fsS --connect-timeout 3 --max-time 5 "https://${resolver}/dns-query?name=${server}&type=AAAA" -H 'accept: application/dns-json'); then
-                [[ "$response" == *'"Status":0'* ]] || continue
-                while IFS= read -r address; do
-                    [ -n "$address" ] && SERVER_IPV6_IPS+=("$address")
-                done < <(printf '%s' "$response" | tr ',' '\n' | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | grep -E '^[0-9a-fA-F:]+$')
-                break
-            fi
-        done
+        if ! addresses=$(/usr/local/bin/resolve-doh "$server" AAAA "$DOH_SERVERS"); then
+            addresses=$(nslookup -type=AAAA "$server" 9.9.9.9 2>/dev/null | awk '
+                /^Name:/ {found=1;next}
+                found && /^Address/ {if($NF ~ /:/) print $NF}')
+        fi
+        while IFS= read -r address; do
+            [ -n "$address" ] && SERVER_IPV6_IPS+=("$address")
+        done <<< "$addresses"
     done
 fi
 
