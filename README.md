@@ -376,7 +376,43 @@ add chain=bgp-in rule="reject"
 | SPX | Нет | / | xHTTP path и spiderX |
 | FP | Нет | firefox | TLS fingerprint (chrome, firefox, safari, edge) |
 | ENCRYPTION | Нет | none | VLESS encryption |
+| XMUX_ENABLED | Нет | 0 | 1 включает клиентский XMUX 16–32; 0 сохраняет настройки XHTTP ядра |
 | LOG_LEVEL | Нет | warning | Уровень логов (debug, info, warning, error) |
+
+### Пилот XMUX
+
+Образ с поддержкой `XMUX_ENABLED` позволяет включить XMUX для всех XHTTP
+outbound контейнера. По умолчанию (`0`) используется прежнее поведение.
+Для пилота на одном роутере в его существующий envlist добавьте:
+
+```routeros
+/container envs add list=<envlist-контейнера> key=XMUX_ENABLED value=1
+```
+
+Если ключ уже существует, измените его значение вместо добавления дубликата.
+Нужен образ из коммита с этой настройкой; старые образы игнорируют переменную.
+Используйте конкретный тег `sha-<commit>`. Сначала загрузите новый контейнер
+в отдельный `root-dir` с прежними interface, envlist и mounts, сохранив старый.
+Одновременно запускать их на одном interface нельзя.
+
+Меняется только `streamSettings.xhttpSettings.extra`: `maxConcurrency=16-32`,
+`maxConnections=0`, `cMaxReuseTimes=0`, `hMaxRequestTimes=600-900`,
+`hMaxReusableSecs=1800-3000`, `hKeepAlivePeriod=0`, `xPaddingBytes=100-1000`.
+Полный блок сохраняет ротацию соединений из Xray 25.12.8. Режим `auto`,
+UUID, Reality, XUDP, DNS и маршруты сохраняются. Общий VLESS `mux` и
+XHTTP XMUX — разные настройки; существующие `MUX_*`/`XUDP_*` не заменяются.
+
+Переключение stop/start выполняйте одним фоновым скриптом RouterOS с проверкой
+и автоматическим возвратом к старому контейнеру: остановка VPN может оборвать
+управляющее соединение. Проверьте IPv4/IPv6, DNS, UDP и используемые приложения;
+статус `running` сам по себе не подтверждает доступность интернета. Перед
+раскаткой на остальные роутеры проверьте поведение пилота под обычной нагрузкой.
+
+Откат настройки: `XMUX_ENABLED=0` и перезапуск. При неработающем новом образе
+остановите его и запустите сохранённый старый контейнер. Не удаляйте старый
+`root-dir` до завершения пилота.
+
+Схема XMUX и значения ядра: [исходный код Xray 25.12.8](https://github.com/XTLS/Xray-core/blob/v25.12.8/infra/conf/transport_internet.go).
 
 ### Если DNS заблокирован
 

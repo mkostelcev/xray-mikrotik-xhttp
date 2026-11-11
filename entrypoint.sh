@@ -99,6 +99,24 @@ fi
 # Build outbounds JSON. One vless outbound per server, tag=proxy-1..N
 build_outbounds() {
     local first=1
+    local xhttp_extra=""
+    case "${XMUX_ENABLED:-0}" in
+        0) ;;
+        1)
+            xhttp_extra=', "extra": {
+              "xPaddingBytes": "100-1000",
+              "xmux": {
+                "maxConcurrency": "16-32",
+                "maxConnections": 0,
+                "cMaxReuseTimes": 0,
+                "hMaxRequestTimes": "600-900",
+                "hMaxReusableSecs": "1800-3000",
+                "hKeepAlivePeriod": 0
+              }
+            }'
+            ;;
+        *) echo "ERROR: XMUX_ENABLED must be 0 or 1" >&2; return 1 ;;
+    esac
     for i in "${!SERVERS[@]}"; do
         local port="${PORTS[$i]:-$DEFAULT_PORT}"
         [ "$first" -eq 1 ] && first=0 || printf ','
@@ -131,7 +149,7 @@ build_outbounds() {
         "sockopt": ${SOCKOPT_JSON},
         "network": "xhttp",
         "security": "reality",
-        "xhttpSettings": { "mode": "auto", "path": "${SPX:-/}" },
+        "xhttpSettings": { "mode": "auto", "path": "${SPX:-/}"${xhttp_extra} },
         "realitySettings": {
           "fingerprint": "${FP:-firefox}",
           "serverName": "${SNI}",
@@ -226,6 +244,9 @@ XRAYEOF
 echo "Generated xray config:"
 cat "${CONFIG_FILE}"
 echo ""
+
+# Проверяем конфиг до изменения маршрутов: ошибка не должна отключать сеть.
+/usr/local/bin/xray run -test -config "${CONFIG_FILE}"
 
 # Routing setup (host networking)
 GATEWAY=$(ip route | grep default | head -1 | awk '{print $3}')
